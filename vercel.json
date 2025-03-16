@@ -1,0 +1,18 @@
+{
+  "crons": [
+    {
+      "path": "/api/subscriptions/upcoming-renewals",
+      "schedule": "0 9 * * *"
+    }
+  ],
+  "env": {
+    "SHOPIFY_STORE_URL": "@shopify_store_url",
+    "SHOPIFY_ACCESS_TOKEN": "@shopify_access_token",
+    "SHOPIFY_WEBHOOK_SECRET": "@shopify_webhook_secret",
+    "SENDGRID_API_KEY": "@sendgrid_api_key",
+    "SENDGRID_FROM_EMAIL": "@sendgrid_from_email",
+    "COMPANY_NAME": "@company_name",
+    "SUPPORT_EMAIL": "@support_email",
+    "NEXT_PUBLIC_URL": "@next_public_url"
+  }
+} 
