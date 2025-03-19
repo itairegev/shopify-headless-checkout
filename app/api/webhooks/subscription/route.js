@@ -26,50 +26,61 @@ function verifyWebhook(body, hmacHeader) {
   return hmac === hmacHeader;
 }
 
-export async function POST(request) {
+export async function POST(req) {
   const startTime = logger.performance.start('webhook-processing');
   
   try {
-    const body = await request.text();
-    const hmacHeader = request.headers.get('x-shopify-hmac-sha256');
+    const body = await req.text();
+    const hmac = req.headers.get('x-shopify-hmac-sha256');
 
     logger.debug('Received webhook', {
-      hmacHeader: hmacHeader ? 'present' : 'missing',
+      hmacHeader: hmac ? 'present' : 'missing',
       contentLength: body?.length || 0,
     });
 
-    if (!verifyWebhook(body, hmacHeader)) {
+    if (!verifyWebhook(body, hmac)) {
       logger.error('Invalid webhook signature', {
-        hmacHeader: hmacHeader || 'missing',
+        hmacHeader: hmac || 'missing',
         bodyLength: body?.length || 0,
       });
       return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
     }
 
-    let data;
-    try {
-      data = JSON.parse(body);
-    } catch (error) {
-      logger.error('Failed to parse webhook body', {
-        error: error.message,
-        bodyLength: body?.length || 0,
-      });
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
-
-    const { topic } = data;
-    if (!topic) {
-      logger.error('Missing webhook topic', { data });
-      return NextResponse.json({ error: 'Missing webhook topic' }, { status: 400 });
-    }
+    const data = JSON.parse(body);
+    const { id, status, trial_ends_on } = data;
 
     logger.info('Processing webhook', {
-      topic,
-      webhookId: data.id,
+      topic: req.headers.get('x-shopify-topic'),
+      webhookId: id,
     });
 
     try {
-      switch (topic) {
+      switch (req.headers.get('x-shopify-topic')) {
+        case 'app_subscriptions/update':
+          // Handle subscription updates
+          if (trial_ends_on) {
+            // Send trial ending notification (e.g., 3 days before)
+            const trialEnd = new Date(trial_ends_on);
+            const now = new Date();
+            const daysUntilTrialEnd = Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24));
+
+            if (daysUntilTrialEnd <= 3) {
+              // Send notification to user
+              // await sendTrialEndingNotification(id);
+            }
+          }
+          break;
+
+        case 'app_subscriptions/cancel':
+          // Handle subscription cancellation
+          // await handleSubscriptionCancellation(id);
+          break;
+
+        case 'app_subscriptions/create':
+          // Handle new subscription
+          // await handleNewSubscription(id, trial_ends_on);
+          break;
+
         case 'subscription/created':
           await handleSubscriptionCreated(data);
           break;
@@ -91,19 +102,19 @@ export async function POST(request) {
           await handlePaymentSuccess(data);
           break;
         default:
-          logger.warn(`Unhandled webhook topic: ${topic}`, { data });
+          logger.warn(`Unhandled webhook topic: ${req.headers.get('x-shopify-topic')}`, { data });
       }
 
       const processingTime = logger.performance.end('webhook-processing', startTime);
       
       logger.info('Webhook processed successfully', {
-        topic,
+        topic: req.headers.get('x-shopify-topic'),
         processingTime,
-        webhookId: data.id,
+        webhookId: id,
       });
 
       await trackEvent('webhook_processed', {
-        topic,
+        topic: req.headers.get('x-shopify-topic'),
         processing_time: processingTime,
         success: true
       });
@@ -113,17 +124,17 @@ export async function POST(request) {
       const processingTime = logger.performance.end('webhook-processing', startTime);
       
       logger.error('Webhook processing failed', {
-        topic,
+        topic: req.headers.get('x-shopify-topic'),
         error: {
           message: error.message,
           stack: error.stack,
         },
         processingTime,
-        webhookId: data.id,
+        webhookId: id,
       });
 
       await trackEvent('webhook_error', {
-        topic,
+        topic: req.headers.get('x-shopify-topic'),
         error: error.message,
         processing_time: processingTime
       });
